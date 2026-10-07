@@ -7,6 +7,15 @@ from .hole import Hole
 DARK_BROWN = (60, 40, 20)
 MOLE_BROWN = (140, 95, 55)
 BLACK = (0, 0, 0)
+WHITE = (255, 255, 255)
+BUTTON_GREEN = (70, 110, 55)
+BUTTON_HOVER_GREEN = (90, 135, 65)
+
+DIFFICULTIES = {
+    "Easy": (60, 0.01),
+    "Medium": (45, 0.02),
+    "Hard": (30, 0.04),
+}
 
 class GameEngine:
     def __init__(self, width, height, rows=3, cols=3):
@@ -24,6 +33,7 @@ class GameEngine:
 
         self.spawn_chance = 0.02   # per-hole, per-frame chance to pop up
         self.mole_up_frames = 45   # how long a mole stays up if not whacked
+        self.difficulty = "Medium"
 
         self.round_seconds = 30
         self.time_left_frames = self.round_seconds * 60
@@ -32,13 +42,78 @@ class GameEngine:
         self.misses = 0
         self.font = pygame.font.SysFont("Arial", 28)
         self.game_over_font = pygame.font.SysFont("Arial", 42, bold=True)
+        self.button_font = pygame.font.SysFont("Arial", 24, bold=True)
         self.game_over = False
+        self.selecting_difficulty = False
+        self.quit_requested = False
 
     def handle_event(self, event):
-        if self.game_over:
+        if event.type == pygame.QUIT:
+            self.quit_requested = True
             return
-        if event.type == pygame.MOUSEBUTTONDOWN:
+
+        if event.type != pygame.MOUSEBUTTONDOWN:
+            return
+
+        if self.selecting_difficulty:
+            self._handle_difficulty_click(event.pos)
+        elif self.game_over:
+            self._handle_game_over_click(event.pos)
+        else:
             self._handle_click(event.pos)
+
+    def _handle_game_over_click(self, pos):
+        if self._play_again_button().collidepoint(pos):
+            self.selecting_difficulty = True
+        elif self._quit_button().collidepoint(pos):
+            self.quit_requested = True
+
+    def _handle_difficulty_click(self, pos):
+        for difficulty, button in self._difficulty_buttons():
+            if button.collidepoint(pos):
+                self._start_round(difficulty)
+                return
+
+        if self._quit_button().collidepoint(pos):
+            self.quit_requested = True
+
+    def _start_round(self, difficulty):
+        self.difficulty = difficulty
+        self.mole_up_frames, self.spawn_chance = DIFFICULTIES[difficulty]
+        self.time_left_frames = self.round_seconds * 60
+        self.score = 0
+        self.misses = 0
+        for hole in self.holes:
+            hole.active = False
+            hole.timer = 0
+        self.game_over = False
+        self.selecting_difficulty = False
+
+    def _play_again_button(self):
+        return pygame.Rect(self.width // 2 - 120, self.height // 2 + 65, 240, 52)
+
+    def _quit_button(self):
+        return pygame.Rect(self.width // 2 - 120, self.height // 2 + 130, 240, 52)
+
+    def _difficulty_buttons(self):
+        button_width = 130
+        gap = 12
+        total_width = len(DIFFICULTIES) * button_width + (len(DIFFICULTIES) - 1) * gap
+        left = (self.width - total_width) // 2
+        top = self.height // 2 - 10
+        return [
+            (
+                difficulty,
+                pygame.Rect(left + index * (button_width + gap), top, button_width, 52),
+            )
+            for index, difficulty in enumerate(DIFFICULTIES)
+        ]
+
+    def _draw_button(self, screen, label, rect):
+        color = BUTTON_HOVER_GREEN if rect.collidepoint(pygame.mouse.get_pos()) else BUTTON_GREEN
+        pygame.draw.rect(screen, color, rect, border_radius=8)
+        text = self.button_font.render(label, True, WHITE)
+        screen.blit(text, text.get_rect(center=rect.center))
 
     def _handle_click(self, pos):
         hit_something = False
@@ -73,20 +148,30 @@ class GameEngine:
                 hole.pop_up(self.mole_up_frames)
 
     def render(self, screen):
+        if self.selecting_difficulty:
+            title = self.game_over_font.render("Choose Difficulty", True, BLACK)
+            screen.blit(
+                title,
+                title.get_rect(center=(self.width // 2, self.height // 2 - 85)),
+            )
+            for difficulty, button in self._difficulty_buttons():
+                self._draw_button(screen, difficulty, button)
+            self._draw_button(screen, "Quit", self._quit_button())
+            return
+
         if self.game_over:
             title = self.game_over_font.render("Game Over", True, BLACK)
             final_score = self.font.render(f"Final score: {self.score}", True, BLACK)
-            prompt = self.font.render("Close the window to exit", True, BLACK)
-
-            screen.blit(title, title.get_rect(center=(self.width // 2, self.height // 2 - 60)))
+            screen.blit(
+                title,
+                title.get_rect(center=(self.width // 2, self.height // 2 - 100)),
+            )
             screen.blit(
                 final_score,
-                final_score.get_rect(center=(self.width // 2, self.height // 2)),
+                final_score.get_rect(center=(self.width // 2, self.height // 2 - 45)),
             )
-            screen.blit(
-                prompt,
-                prompt.get_rect(center=(self.width // 2, self.height // 2 + 50)),
-            )
+            self._draw_button(screen, "Play Again", self._play_again_button())
+            self._draw_button(screen, "Quit", self._quit_button())
             return
 
         for hole in self.holes:
