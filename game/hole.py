@@ -1,11 +1,11 @@
 import pygame
 
 class Hole:
+    MOLE_RADIUS = 32
+
     def __init__(self, center_x, center_y, hit_size=150):
         self.center_x = center_x
         self.center_y = center_y
-        # NOTE: intentionally larger than the spacing between holes -
-        # see Task 1 in the README.
         self.hit_size = hit_size
         self.active = False
         self.timer = 0
@@ -26,6 +26,14 @@ class Hole:
             self.active = False
             self.timer = 0
         return was_active
+
+    def contains_mole(self, pos):
+        if not self.active:
+            return False
+
+        dx = pos[0] - self.center_x
+        dy = pos[1] - self.center_y
+        return dx * dx + dy * dy <= self.MOLE_RADIUS * self.MOLE_RADIUS
 
     def rect(self):
         return pygame.Rect(
