@@ -1,5 +1,10 @@
+import io
+import math
 import pygame
 import random
+import struct
+import wave
+
 from .hole import Hole
 
 # Game Engine
@@ -43,9 +48,40 @@ class GameEngine:
         self.font = pygame.font.SysFont("Arial", 28)
         self.game_over_font = pygame.font.SysFont("Arial", 42, bold=True)
         self.button_font = pygame.font.SysFont("Arial", 24, bold=True)
+        if pygame.mixer.get_init() is None:
+            pygame.mixer.init()
+        self.whack_sound = self._make_tone(880, 0.08, 0.35)
+        self.miss_sound = self._make_tone(220, 0.12, 0.3)
+        self.round_end_sound = self._make_tone(440, 0.35, 0.4)
         self.game_over = False
         self.selecting_difficulty = False
         self.quit_requested = False
+
+    @staticmethod
+    def _make_tone(frequency, duration, volume):
+        sample_rate = 22050
+        sample_count = int(sample_rate * duration)
+        pcm = bytearray()
+        for index in range(sample_count):
+            fade_in = min(1.0, index / (sample_rate * 0.01))
+            fade_out = min(1.0, (sample_count - index) / (sample_rate * 0.03))
+            envelope = min(fade_in, fade_out)
+            sample = int(
+                32767
+                * volume
+                * envelope
+                * math.sin(2 * math.pi * frequency * index / sample_rate)
+            )
+            pcm.extend(struct.pack("<h", sample))
+
+        audio = io.BytesIO()
+        with wave.open(audio, "wb") as wav_file:
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(sample_rate)
+            wav_file.writeframes(pcm)
+        audio.seek(0)
+        return pygame.mixer.Sound(file=audio)
 
     def handle_event(self, event):
         if event.type == pygame.QUIT:
@@ -125,8 +161,11 @@ class GameEngine:
                 hit_something = True
                 break
 
-        if not hit_something:
+        if hit_something:
+            self.whack_sound.play()
+        else:
             self.misses += 1
+            self.miss_sound.play()
 
     def handle_input(self):
         # Reserved for continuously-held-key input; this game is
@@ -140,6 +179,7 @@ class GameEngine:
         self.time_left_frames -= 1
         if self.time_left_frames <= 0:
             self.game_over = True
+            self.round_end_sound.play()
             return
 
         for hole in self.holes:
